@@ -22,10 +22,22 @@ def run_flask():
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
+# الخلطة السحرية لتجاوز حظر يوتيوب عبر محاكي أندرويد موثوق
+YTDL_BASE_OPTIONS = {
+    'quiet': True,
+    'no_warnings': True,
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android'],
+        }
+    },
+    'socket_timeout': 15,
+}
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
-        "📥 أرسل لي أي رابط من (يوتيوب، تيكتوك، إنستغرام...) وسأقوم بتحميله لك فوراً."
+        "📥 أرسل لي أي رابط (يوتيوب، تيكتوك، إنستغرام...) وسأقوم بتحميله فيديو أو صوت MP3 فوراً."
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -38,7 +50,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔍 جاري جلب تفاصيل المقطع...")
 
     try:
-        ydl_opts = {'quiet': True, 'no_warnings': True}
+        ydl_opts = YTDL_BASE_OPTIONS.copy()
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'مقطع فيديو')
@@ -77,8 +89,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     out_file = f"download_{link_id}"
 
     try:
+        ydl_opts = YTDL_BASE_OPTIONS.copy()
+        
         if mode == "audio":
-            ydl_opts = {
+            ydl_opts.update({
                 'format': 'bestaudio/best',
                 'outtmpl': f'{out_file}.%(ext)s',
                 'postprocessors': [{
@@ -86,12 +100,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
                 }],
-            }
+            })
         else:
-            ydl_opts = {
+            ydl_opts.update({
                 'format': 'best[ext=mp4]/best',
                 'outtmpl': f'{out_file}.%(ext)s',
-            }
+            })
             
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
