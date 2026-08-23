@@ -29,13 +29,11 @@ COMMON_YDL_OPTS = {
     'geo_bypass': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['android_vr', 'ios', 'web_embedded'],
-            'player_skip': ['webpage', 'configs']
+            'player_client': ['mweb', 'tv_embedded', 'ios'],
         }
     }
 }
 
-# الاستعانة بالكوكيز في حال وجود الملف بترميز صحيح
 if os.path.exists('cookies.txt'):
     COMMON_YDL_OPTS['cookiefile'] = 'cookies.txt'
 
