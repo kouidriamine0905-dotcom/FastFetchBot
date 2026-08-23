@@ -1,4 +1,4 @@
-    import os
+import os
 import uuid
 import threading
 from flask import Flask
@@ -9,7 +9,6 @@ from telegram.ext import (
 )
 from yt_dlp import YoutubeDL
 
-# خادم وهمي لإرضاء Render
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -121,10 +120,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"❌ حدث خطأ أثناء التحميل: {str(e)}")
 
 def main():
-    # تشغيل خادم الفلاسك في المسار الخلفي
     threading.Thread(target=run_flask, daemon=True).start()
 
-    # تشغيل البوت
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
@@ -134,3 +131,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+        
