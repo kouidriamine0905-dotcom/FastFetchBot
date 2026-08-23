@@ -27,15 +27,14 @@ COMMON_YDL_OPTS = {
     'no_warnings': True,
     'nocheckcertificate': True,
     'geo_bypass': True,
+    'username': 'oauth2',
+    'password': '',
     'extractor_args': {
         'youtube': {
-            'player_client': ['mweb', 'tv_embedded', 'ios'],
+            'player_client': ['tv', 'mweb'],
         }
     }
 }
-
-if os.path.exists('cookies.txt'):
-    COMMON_YDL_OPTS['cookiefile'] = 'cookies.txt'
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
