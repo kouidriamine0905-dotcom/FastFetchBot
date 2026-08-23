@@ -13,7 +13,7 @@ web_app = Flask(__name__)
 
 @web_app.route('/')
 def home():
-    return "Bot is running 24/7!"
+    return "FastFetch Bot is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -23,7 +23,11 @@ TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("أهلاً بك في SnapTube Bot! 🚀\nأرسل لي أي رابط فيديو/صوت للبدء.")
+    welcome_text = (
+        "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
+        "📥 أرسل لي أي رابط فيديو أو صوت من يوتيوب، وسأقوم بتحميله لك فوراً بأعلى جودة ممكّنة."
+    )
+    await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
