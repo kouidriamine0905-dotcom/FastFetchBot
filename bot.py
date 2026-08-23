@@ -8,6 +8,7 @@ from telegram.ext import (
     CallbackQueryHandler, filters, ContextTypes
 )
 from pytubefix import YouTube
+from yt_dlp import YoutubeDL
 
 web_app = Flask(__name__)
 
@@ -22,10 +23,13 @@ def run_flask():
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
+def is_youtube(url):
+    return "youtube.com" in url or "youtu.be" in url
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
-        "📥 أرسل لي أي رابط فيديو أو صوت من يوتيوب، وسأقوم بتحميله لك فوراً بأعلى جودة ممكّنة."
+        "📥 أرسل لي أي رابط فيديو أو صوت من (يوتيوب، تيكتوك، إنستغرام...) وسأقوم بتحميله لك فوراً."
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -38,9 +42,14 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔍 جاري جلب تفاصيل المقطع...")
 
     try:
-        # استخدام عميل 'WEB' أو 'MWEB' للالتفاف على حظر البوتات
-        yt = YouTube(url, client='MWEB')
-        title = yt.title
+        if is_youtube(url):
+            yt = YouTube(url, client='MWEB')
+            title = yt.title
+        else:
+            ydl_opts = {'quiet': True, 'no_warnings': True}
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                title = info.get('title', 'مقطع فيديو')
 
         link_id = str(uuid.uuid4())[:8]
         user_urls[link_id] = url
@@ -73,29 +82,51 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text("⏳ جاري التحميل والمعالجة...")
 
-    try:
-        yt = YouTube(url, client='MWEB')
-        filename = f"file_{link_id}"
+    out_file = f"download_{link_id}"
 
-        if mode == "audio":
-            stream = yt.streams.filter(only_audio=True).first()
-            out_path = stream.download(filename=f"{filename}.mp3")
+    try:
+        if is_youtube(url):
+            yt = YouTube(url, client='MWEB')
+            if mode == "audio":
+                stream = yt.streams.filter(only_audio=True).first()
+                filename = stream.download(filename=f"{out_file}.mp3")
+            else:
+                stream = yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
+                if not stream:
+                    stream = yt.streams.filter(file_extension='mp4').first()
+                filename = stream.download(filename=f"{out_file}.mp4")
         else:
-            stream = yt.streams.filter(progressive=True, file_extension='mp4').get_highest_resolution()
-            if not stream:
-                stream = yt.streams.filter(file_extension='mp4').first()
-            out_path = stream.download(filename=f"{filename}.mp4")
+            if mode == "audio":
+                ydl_opts = {
+                    'format': 'bestaudio/best',
+                    'outtmpl': f'{out_file}.%(ext)s',
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }],
+                }
+            else:
+                ydl_opts = {
+                    'format': 'best[ext=mp4]/best',
+                    'outtmpl': f'{out_file}.%(ext)s',
+                }
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                filename = ydl.prepare_filename(info)
+                if mode == "audio" and not filename.endswith(".mp3"):
+                    filename = os.path.splitext(filename)[0] + ".mp3"
 
         await query.edit_message_text("📤 جاري رفع الملف إلى تيليغرام...")
 
-        with open(out_path, 'rb') as file_to_send:
+        with open(filename, 'rb') as file_to_send:
             if mode == "audio":
                 await context.bot.send_audio(chat_id=query.message.chat_id, audio=file_to_send)
             else:
                 await context.bot.send_video(chat_id=query.message.chat_id, video=file_to_send)
 
-        if os.path.exists(out_path):
-            os.remove(out_path)
+        if os.path.exists(filename):
+            os.remove(filename)
         await query.delete_message()
 
     except Exception as e:
