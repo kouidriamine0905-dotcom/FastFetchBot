@@ -22,13 +22,16 @@ def run_flask():
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
-# إعدادات لتجاوز حظر يوتيوب عبر التخفي كـ Android/iOS client
+# إعدادات متقدمة للالتفاف على حظر يوتيوب على سيرفرات Render
 COMMON_YDL_OPTS = {
     'quiet': True,
     'no_warnings': True,
+    'nocheckcertificate': True,
+    'geo_bypass': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['android', 'ios']
+            'player_client': ['web_embedded', 'android_vr', 'ios', 'mweb'],
+            'skip': ['hls', 'dash']
         }
     }
 }
