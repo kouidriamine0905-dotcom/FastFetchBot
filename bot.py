@@ -38,7 +38,6 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔍 جاري جلب تفاصيل المقطع...")
 
     try:
-        # جلب تفاصيل الفيديو عبر API خارجي لتفادي حظر سيرفر Render
         api_res = requests.post(
             "https://cobalt-api.koyeb.app/",
             json={"url": url},
@@ -47,7 +46,6 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         if api_res.status_code != 200:
-            # تجربة سيرفر احتياطي
             api_res = requests.post(
                 "https://api.cobalt.tools/",
                 json={"url": url},
@@ -95,7 +93,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text("⏳ جاري التحميل والمعالجة...")
 
     try:
-        # طلب رابط التحميل المباشر حسب الخيار Selected
         payload = {"url": item['url']}
         if mode == "audio":
             payload["downloadMode"] = "audio"
@@ -114,7 +111,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text("📤 جاري رفع الملف إلى تيليغرام...")
 
-        # تحميل الملف مؤقتاً لرفعه للتيليغرام
         file_res = requests.get(dl_link, stream=True)
         filename = f"file_{link_id}.{'mp3' if mode == 'audio' else 'mp4'}"
 
