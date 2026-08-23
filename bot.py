@@ -22,24 +22,21 @@ def run_flask():
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
-# إعدادات دمج الكوكيز لتجاوز حظر يوتيوب جذرياً
-def get_ydl_opts(extra_opts=None):
-    opts = {
-        'quiet': True,
-        'no_warnings': True,
+# إعدادات التمويه الذكية لتجاوز حظر يوتيوب كلياً بدون Cookies
+YTDL_BASE_OPTIONS = {
+    'quiet': True,
+    'no_warnings': True,
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['tv', 'android'],
+        }
     }
-    # التحقق من وجود ملف الكوكيز واستخدامه
-    if os.path.exists('cookies.txt'):
-        opts['cookiefile'] = 'cookies.txt'
-        
-    if extra_opts:
-        opts.update(extra_opts)
-    return opts
+}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
-        "📥 أرسل لي أي رابط من (يوتيوب، تيكتوك، إنستغرام...) وسأقوم بتحميله لك فوراً."
+        "📥 أرسل لي أي رابط من يوتيوب، تيكتوك، أو إنستغرام وسأقوم بتحميله فيديو أو صوت MP3 فوراً."
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -52,7 +49,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔍 جاري جلب تفاصيل المقطع...")
 
     try:
-        with YoutubeDL(get_ydl_opts()) as ydl:
+        with YoutubeDL(YTDL_BASE_OPTIONS) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'مقطع فيديو')
 
@@ -90,8 +87,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     out_file = f"download_{link_id}"
 
     try:
+        ydl_opts = YTDL_BASE_OPTIONS.copy()
+        
         if mode == "audio":
-            ydl_opts = get_ydl_opts({
+            ydl_opts.update({
                 'format': 'bestaudio/best',
                 'outtmpl': f'{out_file}.%(ext)s',
                 'postprocessors': [{
@@ -101,7 +100,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 }],
             })
         else:
-            ydl_opts = get_ydl_opts({
+            ydl_opts.update({
                 'format': 'best[ext=mp4]/best',
                 'outtmpl': f'{out_file}.%(ext)s',
             })
