@@ -22,6 +22,17 @@ def run_flask():
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
+# إعدادات لتجاوز حظر يوتيوب عبر التخفي كـ Android/iOS client
+COMMON_YDL_OPTS = {
+    'quiet': True,
+    'no_warnings': True,
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'ios']
+        }
+    }
+}
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
@@ -38,7 +49,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔍 جاري جلب تفاصيل المقطع...")
 
     try:
-        ydl_opts = {'quiet': True, 'no_warnings': True}
+        ydl_opts = dict(COMMON_YDL_OPTS)
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'مقطع فيديو')
@@ -82,6 +93,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if mode == "mp3":
         ydl_opts = {
+            **COMMON_YDL_OPTS,
             'format': 'bestaudio/best',
             'outtmpl': f'{out_file}.%(ext)s',
             'postprocessors': [{
@@ -90,15 +102,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'preferredquality': '192',
             }],
             'max_filesize': 50 * 1024 * 1024,
-            'quiet': True,
         }
     else:
         fmt_str = f'bestvideo[height<={mode}][ext=mp4]+bestaudio[ext=m4a]/best[height<={mode}][ext=mp4]/best' if mode != 'best' else 'best[ext=mp4]/best'
         ydl_opts = {
+            **COMMON_YDL_OPTS,
             'format': fmt_str,
             'outtmpl': f'{out_file}.%(ext)s',
             'max_filesize': 50 * 1024 * 1024,
-            'quiet': True,
         }
 
     try:
@@ -135,4 +146,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-        
+    
