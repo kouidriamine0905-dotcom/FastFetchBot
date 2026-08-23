@@ -1,13 +1,13 @@
 import os
 import uuid
 import threading
+import requests
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, 
     CallbackQueryHandler, filters, ContextTypes
 )
-from yt_dlp import YoutubeDL
 
 web_app = Flask(__name__)
 
@@ -22,20 +22,6 @@ def run_flask():
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
-COMMON_YDL_OPTS = {
-    'quiet': True,
-    'no_warnings': True,
-    'nocheckcertificate': True,
-    'geo_bypass': True,
-    'username': 'oauth2',
-    'password': '',
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['tv', 'mweb'],
-        }
-    }
-}
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
@@ -44,7 +30,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text
+    url = update.message.text.strip()
     if not url.startswith("http"):
         await update.message.reply_text("❌ يرجى إرسال رابط صحيح.")
         return
@@ -52,30 +38,46 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔍 جاري جلب تفاصيل المقطع...")
 
     try:
-        ydl_opts = dict(COMMON_YDL_OPTS)
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            title = info.get('title', 'مقطع فيديو')
+        # جلب تفاصيل الفيديو عبر API خارجي لتفادي حظر سيرفر Render
+        api_res = requests.post(
+            "https://cobalt-api.koyeb.app/",
+            json={"url": url},
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            timeout=10
+        )
+        
+        if api_res.status_code != 200:
+            # تجربة سيرفر احتياطي
+            api_res = requests.post(
+                "https://api.cobalt.tools/",
+                json={"url": url},
+                headers={"Accept": "application/json", "Content-Type": "application/json"},
+                timeout=10
+            )
+
+        data = api_res.json()
+        
+        if data.get("status") in ["error", "rate-limit"]:
+            raise Exception("تعذر معالجة الرابط عبر السيرفر الوسيط.")
 
         link_id = str(uuid.uuid4())[:8]
-        user_urls[link_id] = url
+        user_urls[link_id] = {
+            'url': url,
+            'download_url': data.get('url')
+        }
 
         keyboard = [
             [
-                InlineKeyboardButton("🎬 1080p", callback_data=f"dl|1080|{link_id}"),
-                InlineKeyboardButton("🎬 720p", callback_data=f"dl|720|{link_id}"),
-            ],
-            [
-                InlineKeyboardButton("🎬 480p/360p", callback_data=f"dl|best|{link_id}"),
-                InlineKeyboardButton("🎵 صوت MP3", callback_data=f"dl|mp3|{link_id}"),
+                InlineKeyboardButton("🎬 تحميل الفيديو (MP4)", callback_data=f"dl|video|{link_id}"),
+                InlineKeyboardButton("🎵 تحميل الصوت (MP3)", callback_data=f"dl|audio|{link_id}"),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await msg.edit_text(f"📌 **العنوان:** {title}\n\nاختر صيغة/جودة التحميل المطلوب:", reply_markup=reply_markup, parse_mode='Markdown')
+        await msg.edit_text("📌 **تم العثور على المقطع بنجاح!**\n\nاختر الصيغة المطلوبة للتحميل:", reply_markup=reply_markup, parse_mode='Markdown')
 
     except Exception as e:
-        await msg.edit_text(f"❌ تعذر استخراج بيانات الرابط: {str(e)}")
+        await msg.edit_text(f"❌ تعذر استخراج بيانات الرابط. يرجى المحاولة لاحقاً.\nالسبب: {str(e)}")
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -85,47 +87,43 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = data[1]
     link_id = data[2]
 
-    url = user_urls.get(link_id)
-    if not url:
+    item = user_urls.get(link_id)
+    if not item:
         await query.edit_message_text("❌ انتهت صلاحية الرابط، يرجى إعادة إرساله.")
         return
 
     await query.edit_message_text("⏳ جاري التحميل والمعالجة...")
 
-    out_file = f"download_{link_id}"
-
-    if mode == "mp3":
-        ydl_opts = {
-            **COMMON_YDL_OPTS,
-            'format': 'bestaudio/best',
-            'outtmpl': f'{out_file}.%(ext)s',
-            'postprocessors': [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }],
-            'max_filesize': 50 * 1024 * 1024,
-        }
-    else:
-        fmt_str = f'bestvideo[height<={mode}][ext=mp4]+bestaudio[ext=m4a]/best[height<={mode}][ext=mp4]/best' if mode != 'best' else 'best[ext=mp4]/best'
-        ydl_opts = {
-            **COMMON_YDL_OPTS,
-            'format': fmt_str,
-            'outtmpl': f'{out_file}.%(ext)s',
-            'max_filesize': 50 * 1024 * 1024,
-        }
-
     try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            if mode == "mp3":
-                filename = os.path.splitext(filename)[0] + ".mp3"
+        # طلب رابط التحميل المباشر حسب الخيار Selected
+        payload = {"url": item['url']}
+        if mode == "audio":
+            payload["downloadMode"] = "audio"
+            payload["audioFormat"] = "mp3"
+
+        res = requests.post(
+            "https://api.cobalt.tools/",
+            json=payload,
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            timeout=30
+        ).json()
+
+        dl_link = res.get("url")
+        if not dl_link:
+            raise Exception("لم يتم توليد رابط التحميل المباشر.")
 
         await query.edit_message_text("📤 جاري رفع الملف إلى تيليغرام...")
 
+        # تحميل الملف مؤقتاً لرفعه للتيليغرام
+        file_res = requests.get(dl_link, stream=True)
+        filename = f"file_{link_id}.{'mp3' if mode == 'audio' else 'mp4'}"
+
+        with open(filename, 'wb') as f:
+            for chunk in file_res.iter_content(chunk_size=8192):
+                f.write(chunk)
+
         with open(filename, 'rb') as file_to_send:
-            if mode == "mp3":
+            if mode == "audio":
                 await context.bot.send_audio(chat_id=query.message.chat_id, audio=file_to_send)
             else:
                 await context.bot.send_video(chat_id=query.message.chat_id, video=file_to_send)
