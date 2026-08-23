@@ -22,7 +22,6 @@ def run_flask():
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
-# إعدادات متقدمة للالتفاف على حظر يوتيوب على سيرفرات Render
 COMMON_YDL_OPTS = {
     'quiet': True,
     'no_warnings': True,
@@ -30,8 +29,7 @@ COMMON_YDL_OPTS = {
     'geo_bypass': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['web_embedded', 'android_vr', 'ios', 'mweb'],
-            'skip': ['hls', 'dash']
+            'player_client': ['ios']
         }
     }
 }
