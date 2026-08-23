@@ -1,5 +1,7 @@
-import os
+    import os
 import uuid
+import threading
+from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, 
@@ -7,9 +9,18 @@ from telegram.ext import (
 )
 from yt_dlp import YoutubeDL
 
-TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
+# خادم وهمي لإرضاء Render
+web_app = Flask(__name__)
 
-# تخزين المؤقت للروابط
+@web_app.route('/')
+def home():
+    return "Bot is running 24/7!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    web_app.run(host="0.0.0.0", port=port)
+
+TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -32,7 +43,6 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         link_id = str(uuid.uuid4())[:8]
         user_urls[link_id] = url
 
-        # إنشاء الأزرار التفاعلية
         keyboard = [
             [
                 InlineKeyboardButton("🎬 1080p", callback_data=f"dl|1080|{link_id}"),
@@ -110,9 +120,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await query.edit_message_text(f"❌ حدث خطأ أثناء التحميل: {str(e)}")
 
-app = ApplicationBuilder().token(TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
-app.add_handler(CallbackQueryHandler(button_callback))
+def main():
+    # تشغيل خادم الفلاسك في المسار الخلفي
+    threading.Thread(target=run_flask, daemon=True).start()
 
-app.run_polling()
+    # تشغيل البوت
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
+    app.add_handler(CallbackQueryHandler(button_callback))
+    
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()
