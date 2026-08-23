@@ -29,10 +29,15 @@ COMMON_YDL_OPTS = {
     'geo_bypass': True,
     'extractor_args': {
         'youtube': {
-            'player_client': ['ios']
+            'player_client': ['android_vr', 'ios', 'web_embedded'],
+            'player_skip': ['webpage', 'configs']
         }
     }
 }
+
+# الاستعانة بالكوكيز في حال وجود الملف بترميز صحيح
+if os.path.exists('cookies.txt'):
+    COMMON_YDL_OPTS['cookiefile'] = 'cookies.txt'
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
@@ -147,4 +152,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
