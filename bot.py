@@ -5,14 +5,14 @@ from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, 
-    CallbackQueryHandler, filters, ContextTypes
+    ContextTypes
 )
 
 web_app = Flask(__name__)
 
 @web_app.route('/')
 def home():
-    return "FastFetch API Bot is running 24/7!"
+    return "FastFetch Bot is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -20,13 +20,10 @@ def run_flask():
 
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 
-# تخزين مؤقت للروابط للمستخدمين
-user_media_links = {}
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
-        "✨ **أهلاً بك في FastFetch Bot (النسخة الخارقة)!** 🚀\n\n"
-        "📥 أرسل لي أي رابط (يوتيوب، تيكتوك، إنستغرام، فيسبوك) وسأجلب لك رابط التحميل فوراً وبدون مشاكل!"
+        "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
+        "📥 أرسل لي أي رابط (يوتيوب، تيكتوك، إنستغرام، فيسبوك) وسأجلب لك رابط التحميل فوراً!"
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -39,7 +36,6 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔍 جاري معالجة الرابط عبر السيرفر السريع...")
 
     try:
-        # نستخدم خدمة API عامة ومستقرة لجلب روابط الميديا مباشرة
         api_url = "https://coapi.it/api/json"
         headers = {
             "Accept": "application/json",
@@ -54,14 +50,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if status == "redirect" or status == "stream":
             download_url = res_data.get("url")
-            
             keyboard = [[InlineKeyboardButton("📥 تحميل الملف مباشرة", url=download_url)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await msg.edit_text("✅ **تم تجهيز رابط التحميل بنجاح!**\nاضغط على الزر أدناه للتحميل:", reply_markup=reply_markup, parse_mode='Markdown')
             
         elif status == "picker":
-            # لو كان هناك عدة جودات أو صور متعددة
             choices = res_data.get("picker", [])
             if choices:
                 download_url = choices[0].get("url")
