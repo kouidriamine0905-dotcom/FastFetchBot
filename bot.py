@@ -1,12 +1,17 @@
 import os
 import uuid
 import threading
+import subprocess
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, 
     CallbackQueryHandler, filters, ContextTypes
 )
+
+# تحديث مكتبة yt-dlp تلقائياً لضمان دعم تيكتوك وإنستغرام لأحدث إصدار
+subprocess.run(["pip", "install", "--upgrade", "yt-dlp"])
+
 from yt_dlp import YoutubeDL
 
 web_app = Flask(__name__)
@@ -22,21 +27,17 @@ def run_flask():
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
-# إعدادات التمويه الذكية لتجاوز حظر يوتيوب كلياً بدون Cookies
+# إعدادات متوافقة مع تيكتوك والمنصات بدون أخطاء
 YTDL_BASE_OPTIONS = {
     'quiet': True,
     'no_warnings': True,
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['tv', 'android'],
-        }
-    }
+    'socket_timeout': 20,
 }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
-        "📥 أرسل لي أي رابط من يوتيوب، تيكتوك، أو إنستغرام وسأقوم بتحميله فيديو أو صوت MP3 فوراً."
+        "📥 أرسل لي أي رابط من تيكتوك، إنستغرام، أو فيسبوك وسأقوم بتحميله لك فوراً."
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -49,7 +50,8 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔍 جاري جلب تفاصيل المقطع...")
 
     try:
-        with YoutubeDL(YTDL_BASE_OPTIONS) as ydl:
+        ydl_opts = YTDL_BASE_OPTIONS.copy()
+        with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             title = info.get('title', 'مقطع فيديو')
 
@@ -59,15 +61,14 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [
                 InlineKeyboardButton("🎬 تحميل الفيديو (MP4)", callback_data=f"dl|video|{link_id}"),
-                InlineKeyboardButton("🎵 تحميل الصوت (MP3)", callback_data=f"dl|audio|{link_id}"),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await msg.edit_text(f"📌 **العنوان:** {title}\n\nاختر الصيغة المطلوبة للتحميل:", reply_markup=reply_markup, parse_mode='Markdown')
+        await msg.edit_text(f"📌 **العنوان:** {title[:50]}...\n\nاختر الصيغة المطلوبة للتحميل:", reply_markup=reply_markup, parse_mode='Markdown')
 
     except Exception as e:
-        await msg.edit_text(f"❌ تعذر استخراج بيانات الرابط: {str(e)}")
+        await msg.edit_text(f"❌ تعذر استخراج بيانات الرابط: تأكد من صحة الرابط.")
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -88,36 +89,19 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         ydl_opts = YTDL_BASE_OPTIONS.copy()
-        
-        if mode == "audio":
-            ydl_opts.update({
-                'format': 'bestaudio/best',
-                'outtmpl': f'{out_file}.%(ext)s',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-            })
-        else:
-            ydl_opts.update({
-                'format': 'best[ext=mp4]/best',
-                'outtmpl': f'{out_file}.%(ext)s',
-            })
+        ydl_opts.update({
+            'format': 'best/best',
+            'outtmpl': f'{out_file}.%(ext)s',
+        })
             
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
-            if mode == "audio" and not filename.endswith(".mp3"):
-                filename = os.path.splitext(filename)[0] + ".mp3"
 
-        await query.edit_message_text("📤 جاري رفع الملف إلى تيليغرام...")
+        await query.edit_message_text("📤 جاري رفع الفيديو إلى تيليغرام...")
 
         with open(filename, 'rb') as file_to_send:
-            if mode == "audio":
-                await context.bot.send_audio(chat_id=query.message.chat_id, audio=file_to_send)
-            else:
-                await context.bot.send_video(chat_id=query.message.chat_id, video=file_to_send)
+            await context.bot.send_video(chat_id=query.message.chat_id, video=file_to_send)
 
         if os.path.exists(filename):
             os.remove(filename)
