@@ -1,17 +1,12 @@
 import os
 import uuid
 import threading
-import subprocess
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, 
     CallbackQueryHandler, filters, ContextTypes
 )
-
-# تحديث مكتبة yt-dlp تلقائياً لضمان دعم تيكتوك وإنستغرام لأحدث إصدار
-subprocess.run(["pip", "install", "--upgrade", "yt-dlp"])
-
 from yt_dlp import YoutubeDL
 
 web_app = Flask(__name__)
@@ -27,17 +22,23 @@ def run_flask():
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
-# إعدادات متوافقة مع تيكتوك والمنصات بدون أخطاء
+# إعدادات أساسية ومستقرة بدون تعديل الـ requirements
 YTDL_BASE_OPTIONS = {
     'quiet': True,
     'no_warnings': True,
-    'socket_timeout': 20,
+    'socket_timeout': 30,
+    'geo_bypass': True,
+    'extractor_args': {
+        'tiktok': {
+            'api_hostname': 'api16-normal-c-useast1a.tiktokv.com'
+        }
+    }
 }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
-        "📥 أرسل لي أي رابط من تيكتوك، إنستغرام، أو فيسبوك وسأقوم بتحميله لك فوراً."
+        "📥 أرسل لي أي رابط من تيكتوك أو إنستغرام وسأقوم بتحميله لك فوراً."
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -53,6 +54,8 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ydl_opts = YTDL_BASE_OPTIONS.copy()
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            if 'entries' in info:
+                info = info['entries'][0]
             title = info.get('title', 'مقطع فيديو')
 
         link_id = str(uuid.uuid4())[:8]
@@ -68,14 +71,13 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(f"📌 **العنوان:** {title[:50]}...\n\nاختر الصيغة المطلوبة للتحميل:", reply_markup=reply_markup, parse_mode='Markdown')
 
     except Exception as e:
-        await msg.edit_text(f"❌ تعذر استخراج بيانات الرابط: تأكد من صحة الرابط.")
+        await msg.edit_text(f"❌ تعذر استخراج بيانات الرابط: تأكد أن الرابط عام.")
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     data = query.data.split("|")
-    mode = data[1]
     link_id = data[2]
 
     url = user_urls.get(link_id)
@@ -108,7 +110,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.delete_message()
 
     except Exception as e:
-        await query.edit_message_text(f"❌ حدث خطأ أثناء التحميل: {str(e)}")
+        await query.edit_message_text(f"❌ حدث خطأ أثناء التحميل.")
 
 def main():
     threading.Thread(target=run_flask, daemon=True).start()
