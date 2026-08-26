@@ -37,19 +37,23 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🔍 جاري معالجة الرابط عبر السيرفر السريع...")
 
     try:
-        api_url = "https://coapi.it/api/json"
+        # استخدام خدمة بديلة ومستقرة تماماً لجلب روابط الميديا
+        api_url = f"https://api.cobalt.tools/api/json"
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json"
         }
-        payload = {"url": url}
+        payload = {
+            "url": url,
+            "vQuality": "720"
+        }
 
-        response = requests.post(api_url, json=payload, headers=headers, timeout=15)
+        response = requests.post(api_url, json=payload, headers=headers, timeout=20)
         res_data = response.json()
 
         status = res_data.get("status")
 
-        if status == "redirect" or status == "stream":
+        if status == "stream" or status == "redirect":
             download_url = res_data.get("url")
             keyboard = [[InlineKeyboardButton("📥 تحميل الملف مباشرة", url=download_url)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -57,16 +61,18 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.edit_text("✅ **تم تجهيز رابط التحميل بنجاح!**\nاضغط على الزر أدناه للتحميل:", reply_markup=reply_markup, parse_mode='Markdown')
             
         elif status == "picker":
-            choices = res_data.get("picker", [])
-            if choices:
-                download_url = choices[0].get("url")
+            # في حال وجود أكثر من خيار جودة أو صور متعددة
+            picker_items = res_data.get("picker", [])
+            if picker_items:
+                download_url = picker_items[0].get("url")
                 keyboard = [[InlineKeyboardButton("📥 تحميل الملف", url=download_url)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await msg.edit_text("✅ **تم تجهيز المقطع!** اضغط أدناه للتحميل:", reply_markup=reply_markup, parse_mode='Markdown')
             else:
-                await msg.edit_text("❌ عذراً، لم نتمكن من العثور على رابط مباشر لهذا الملف.")
+                await msg.edit_text("❌ عذراً، لم نتمكن من استخراج رابط التحميل.")
         else:
-            await msg.edit_text("❌ تعذر تحميل هذا الرابط، تأكد أنه عام وليس خاصاً.")
+            error_text = res_data.get("text", "تأكد أن الرابط عام وليس خاصاً.")
+            await msg.edit_text(f"❌ تعذر التحميل: {error_text}")
 
     except Exception as e:
         await msg.edit_text(f"❌ حدث خطأ في الاتصال بالخدمة. حاول مجدداً لاحقاً.")
@@ -85,7 +91,6 @@ def webhook():
         json_data = request.get_json(force=True)
         update = Update.de_json(json_data, telegram_app.bot)
         
-        # الطريقة الآمنة لتشغيل الـ Application وتحديثات الـ Webhook بدون أخطاء
         async def process():
             await telegram_app.initialize()
             await telegram_app.process_update(update)
@@ -99,7 +104,6 @@ def webhook():
     return 'OK', 200
 
 if __name__ == '__main__':
-    # تحديث رابط الويب هوك لدى تيليجرام تلقائياً
     webhook_url = f"{RENDER_EXTERNAL_URL}/{TOKEN}"
     requests.get(f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}")
     
