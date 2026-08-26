@@ -8,14 +8,11 @@ from telegram.ext import (
 )
 
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
-
-# سنحصل على رابط موقعك على Render تلقائياً أو عبر المتغيرات
-# استبدل رابط "fastfetchbot.onrender.com" برابط موقعك الفعلي على Render
 RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://fastfetchbot.onrender.com")
 
 web_app = Flask(__name__)
 
-# إعداد تطبيق تيليجرام بدون polling
+# تهيئة تطبيق تيليجرام
 telegram_app = ApplicationBuilder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -74,7 +71,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await msg.edit_text(f"❌ حدث خطأ في الاتصال بالخدمة. حاول مجدداً لاحقاً.")
 
-# تسجيل الهاندلرز
+# تسجيل الأوامر والرسائل
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(MessageHandler(filters.TEXT, handle_link))
 
@@ -82,20 +79,27 @@ telegram_app.add_handler(MessageHandler(filters.TEXT, handle_link))
 def home():
     return "FastFetch Webhook Bot is running 24/7!"
 
-# المسار الذي ستستقبل عليه تليجرام التحديثات
 @web_app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    json_data = request.get_json(force=True)
-    update = Update.de_json(json_data, telegram_app.bot)
-    
-    # تشغيل المعالجة بشكل غير同期 (Async) داخل Flask
-    import asyncio
-    asyncio.run(telegram_app.process_update(update))
-    
+    try:
+        json_data = request.get_json(force=True)
+        update = Update.de_json(json_data, telegram_app.bot)
+        
+        # الطريقة الآمنة لتشغيل الـ Application وتحديثات الـ Webhook بدون أخطاء
+        async def process():
+            await telegram_app.initialize()
+            await telegram_app.process_update(update)
+            await telegram_app.shutdown()
+
+        import asyncio
+        asyncio.run(process())
+    except Exception as e:
+        print(f"Error processing update: {e}")
+        
     return 'OK', 200
 
 if __name__ == '__main__':
-    # تهيئة الـ Webhook تلقائياً مع تيليجرام عند بدء التشغيل
+    # تحديث رابط الويب هوك لدى تيليجرام تلقائياً
     webhook_url = f"{RENDER_EXTERNAL_URL}/{TOKEN}"
     requests.get(f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}")
     
