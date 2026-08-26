@@ -14,6 +14,7 @@ RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://fastfetchbo
 web_app = Flask(__name__)
 telegram_app = ApplicationBuilder().token(TOKEN).build()
 
+# إعدادات خاصة لـ yt-dlp تتخطى الحماية وتدعم تيكتوك، إنستغرام، وفيسبوك
 YTDL_OPTIONS = {
     'quiet': True,
     'no_warnings': True,
@@ -24,8 +25,12 @@ YTDL_OPTIONS = {
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
-        "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
-        "📥 أرسل لي أي رابط (يوتيوب، تيكتوك، إنستغرام) وسأقوم باستخراج وتجهيزه لك فوراً!"
+        "✨ **أهلاً بك في بوت التحميل السريع!** 🚀\n\n"
+        "📥 أرسل لي رابطاً من:\n"
+        "• 🎥 **TikTok**\n"
+        "• 📸 **Instagram**\n"
+        "• 📘 **Facebook**\n\n"
+        "وسأقوم بتجهيز رابط التحميل لك فوراً!"
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -38,10 +43,15 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     if not url.startswith("http"):
-        await update.message.reply_text("❌ يرجى إرسال رابط صحيح.")
+        await update.message.reply_text("❌ يرجى إرسال رابط صحيح يبدأ بـ http.")
         return
 
-    msg = await update.message.reply_text("🔍 جاري فحص الرابط واستخراج المقطع...")
+    # منع يوتيوب بشكل نهائي وتنبيه المستخدم
+    if "youtube.com" in url or "youtu.be" in url:
+        await update.message.reply_text("❌ عذراً، خدمة يوتيوب متوقفة حالياً. البوت يدعم TikTok, Instagram, و Facebook فقط.")
+        return
+
+    msg = await update.message.reply_text("🔍 جاري معالجة الرابط واستخراج الفيديو...")
 
     try:
         with YoutubeDL(YTDL_OPTIONS) as ydl:
@@ -55,12 +65,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if direct_url:
             keyboard = [[InlineKeyboardButton("📥 تحميل الفيديو مباشرة", url=direct_url)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await msg.edit_text(f"📌 **{title[:50]}...**\n\n✅ تم استخراج الرابط بنجاح:", reply_markup=reply_markup, parse_mode='Markdown')
+            await msg.edit_text(f"📌 **{title[:40]}...**\n\n✅ تم تجهيز الرابط بنجاح:", reply_markup=reply_markup, parse_mode='Markdown')
         else:
-            await msg.edit_text("❌ تعذر العثور على رابط التحميل المباشر.")
+            await msg.edit_text("❌ تعذر العثور على رابط التحميل المباشر لهذا الرابط.")
 
     except Exception as e:
-        await msg.edit_text(f"❌ عذراً، هذا الرابط محمي أو غير مدعوم حالياً.")
+        await msg.edit_text("❌ عذراً، هذا الرابط خاص أو غير مدعوم حالياً.")
 
 # تسجيل الهاندلرز
 telegram_app.add_handler(CommandHandler("start", start))
@@ -68,7 +78,7 @@ telegram_app.add_handler(MessageHandler(filters.TEXT, handle_link))
 
 @web_app.route('/')
 def home():
-    return "FastFetch Webhook Bot is running 24/7!"
+    return "FastFetch Webhook Bot (TikTok, Insta, FB) is running 24/7!"
 
 @web_app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
