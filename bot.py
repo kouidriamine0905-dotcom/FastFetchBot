@@ -1,24 +1,22 @@
 import os
-import threading
 import requests
-from flask import Flask
+from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, 
     filters, ContextTypes
 )
 
+TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
+
+# سنحصل على رابط موقعك على Render تلقائياً أو عبر المتغيرات
+# استبدل رابط "fastfetchbot.onrender.com" برابط موقعك الفعلي على Render
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://fastfetchbot.onrender.com")
+
 web_app = Flask(__name__)
 
-@web_app.route('/')
-def home():
-    return "FastFetch Bot is running 24/7!"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    web_app.run(host="0.0.0.0", port=port)
-
-TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
+# إعداد تطبيق تيليجرام بدون polling
+telegram_app = ApplicationBuilder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
@@ -28,7 +26,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # نتأكد أن الرسالة تحتوي على نص وليست أمراً
     if not update.message or not update.message.text:
         return
         
@@ -77,15 +74,30 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await msg.edit_text(f"❌ حدث خطأ في الاتصال بالخدمة. حاول مجدداً لاحقاً.")
 
-def main():
-    threading.Thread(target=run_flask, daemon=True).start()
+# تسجيل الهاندلرز
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(MessageHandler(filters.TEXT, handle_link))
 
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    # فلتر نظيف وبسيط لاستقبال النصوص العادية فقط
-    app.add_handler(MessageHandler(filters.TEXT, handle_link))
+@web_app.route('/')
+def home():
+    return "FastFetch Webhook Bot is running 24/7!"
+
+# المسار الذي ستستقبل عليه تليجرام التحديثات
+@web_app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    json_data = request.get_json(force=True)
+    update = Update.de_json(json_data, telegram_app.bot)
     
-    app.run_polling()
+    # تشغيل المعالجة بشكل غير同期 (Async) داخل Flask
+    import asyncio
+    asyncio.run(telegram_app.process_update(update))
+    
+    return 'OK', 200
 
 if __name__ == '__main__':
-    main()
+    # تهيئة الـ Webhook تلقائياً مع تيليجرام عند بدء التشغيل
+    webhook_url = f"{RENDER_EXTERNAL_URL}/{TOKEN}"
+    requests.get(f"https://api.telegram.org/bot{TOKEN}/setWebhook?url={webhook_url}")
+    
+    port = int(os.environ.get("PORT", 10000))
+    web_app.run(host="0.0.0.0", port=port)
