@@ -1,6 +1,7 @@
 import os
 import uuid
 import threading
+import sqlite3
 from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -22,7 +23,46 @@ def run_flask():
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
-# إعدادات yt-dlp محدثة ومزودة بـ User-Agent قوي لتخطي حماية تيكتوك وإنستغرام وفيسبوك
+# --- إحصائيات البوت (قاعدة بيانات خفيفة وسريعة) ---
+def init_db():
+    conn = sqlite3.connect('bot_stats.db')
+    c = conn.cursor()
+    c.execute('CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY)')
+    c.execute('CREATE TABLE IF NOT EXISTS stats (id INTEGER PRIMARY KEY, downloads INTEGER)')
+    c.execute('INSERT OR IGNORE INTO stats (id, downloads) VALUES (1, 0)')
+    conn.commit()
+    conn.close()
+
+def track_user(user_id):
+    conn = sqlite3.connect('bot_stats.db')
+    c = conn.cursor()
+    c.execute('INSERT OR IGNORE INTO users (user_id) VALUES (?)', (user_id,))
+    conn.commit()
+    conn.close()
+
+def increment_downloads():
+    conn = sqlite3.connect('bot_stats.db')
+    c = conn.cursor()
+    c.execute('UPDATE stats SET downloads = downloads + 1 WHERE id = 1')
+    conn.commit()
+    conn.close()
+
+def get_bot_stats():
+    conn = sqlite3.connect('bot_stats.db')
+    c = conn.cursor()
+    c.execute('SELECT COUNT(*) FROM users')
+    users_count = c.fetchone()[0]
+    c.execute('SELECT downloads FROM stats WHERE id = 1')
+    row = c.fetchone()
+    downloads_count = row[0] if row else 0
+    conn.close()
+    return users_count, downloads_count
+
+# تهيئة القاعدة عند بدء التشغيل
+init_db()
+# ------------------------------------------------
+
+# إعدادات yt-dlp لتخطي حماية تيكتوك وإنستغرام وفيسبوك
 YTDL_BASE_OPTIONS = {
     'quiet': True,
     'no_warnings': True,
@@ -36,22 +76,36 @@ YTDL_BASE_OPTIONS = {
 }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    track_user(user_id)
+    
     welcome_text = (
         "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
         "📥 أرسل لي رابطاً من (تيكتوك، إنستغرام، فيسبوك...) وسأقوم بتحميله فيديو أو صوت MP3 فوراً."
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    users, downloads = get_bot_stats()
+    stats_text = (
+        "📊 **إحصائيات البوت الحالية:**\n\n"
+        f"👥 **عدد المستخدمين الكلي:** `{users}`\n"
+        f"📥 **عدد التحميلات الناجحة:** `{downloads}`"
+    )
+    await update.message.reply_text(stats_text, parse_mode='Markdown')
+
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
         
+    user_id = update.effective_user.id
+    track_user(user_id)  # تسجيل المستخدم تلقائياً
+
     url = update.message.text.strip()
     if not url.startswith("http"):
         await update.message.reply_text("❌ يرجى إرسال رابط صحيح.")
         return
 
-    # منع يوتيوب مؤقتاً لتفادي مشاكله وتركيز البوت على البقية
     if "youtube.com" in url or "youtu.be" in url:
         await update.message.reply_text("❌ عذراً، يوتيوب متوقف حالياً. البوت يدعم تيكتوك، إنستغرام، وفيسبوك.")
         return
@@ -133,6 +187,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await context.bot.send_video(chat_id=query.message.chat_id, video=file_to_send)
 
+        # تسجيل عملية تحميل ناجحة في قاعدة البيانات
+        increment_downloads()
+
         await query.delete_message()
 
     except Exception as e:
@@ -150,6 +207,7 @@ def main():
 
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("stats", stats_command))  # أمر عرض الإحصائيات
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
     app.add_handler(CallbackQueryHandler(button_callback))
     
