@@ -5,7 +5,7 @@ from flask import Flask
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, 
-    ContextTypes
+    filters, ContextTypes
 )
 
 web_app = Flask(__name__)
@@ -28,7 +28,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # نتأكد أن الرسالة تحتوي على نص وليست أمراً
+    if not update.message or not update.message.text:
+        return
+        
     url = update.message.text.strip()
+    if url.startswith("/"):
+        return
+        
     if not url.startswith("http"):
         await update.message.reply_text("❌ يرجى إرسال رابط صحيح.")
         return
@@ -75,7 +82,8 @@ def main():
 
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
+    # فلتر نظيف وبسيط لاستقبال النصوص العادية فقط
+    app.add_handler(MessageHandler(filters.TEXT, handle_link))
     
     app.run_polling()
 
