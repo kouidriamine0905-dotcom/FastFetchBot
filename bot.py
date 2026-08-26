@@ -22,29 +22,38 @@ def run_flask():
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 user_urls = {}
 
-# الخلطة السحرية لتجاوز حظر يوتيوب عبر محاكي أندرويد موثوق
+# إعدادات yt-dlp محدثة ومزودة بـ User-Agent قوي لتخطي حماية تيكتوك وإنستغرام وفيسبوك
 YTDL_BASE_OPTIONS = {
     'quiet': True,
     'no_warnings': True,
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['android'],
-        }
-    },
-    'socket_timeout': 15,
+    'socket_timeout': 25,
+    'geo_bypass': True,
+    'http_headers': {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+    }
 }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
-        "📥 أرسل لي أي رابط (يوتيوب، تيكتوك، إنستغرام...) وسأقوم بتحميله فيديو أو صوت MP3 فوراً."
+        "📥 أرسل لي رابطاً من (تيكتوك، إنستغرام، فيسبوك...) وسأقوم بتحميله فيديو أو صوت MP3 فوراً."
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+        
     url = update.message.text.strip()
     if not url.startswith("http"):
         await update.message.reply_text("❌ يرجى إرسال رابط صحيح.")
+        return
+
+    # منع يوتيوب مؤقتاً لتفادي مشاكله وتركيز البوت على البقية
+    if "youtube.com" in url or "youtu.be" in url:
+        await update.message.reply_text("❌ عذراً، يوتيوب متوقف حالياً. البوت يدعم تيكتوك، إنستغرام، وفيسبوك.")
         return
 
     msg = await update.message.reply_text("🔍 جاري جلب تفاصيل المقطع...")
@@ -53,6 +62,8 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ydl_opts = YTDL_BASE_OPTIONS.copy()
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            if 'entries' in info:
+                info = info['entries'][0]
             title = info.get('title', 'مقطع فيديو')
 
         link_id = str(uuid.uuid4())[:8]
@@ -66,10 +77,10 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await msg.edit_text(f"📌 **العنوان:** {title}\n\nاختر الصيغة المطلوبة للتحميل:", reply_markup=reply_markup, parse_mode='Markdown')
+        await msg.edit_text(f"📌 **العنوان:** {title[:50]}\n\nاختر الصيغة المطلوبة للتحميل:", reply_markup=reply_markup, parse_mode='Markdown')
 
     except Exception as e:
-        await msg.edit_text(f"❌ تعذر استخراج بيانات الرابط: {str(e)}")
+        await msg.edit_text(f"❌ تعذر استخراج بيانات الرابط، تأكد أنه عام وليس خاصاً.")
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -87,6 +98,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text("⏳ جاري التحميل والمعالجة...")
 
     out_file = f"download_{link_id}"
+    filename = None
 
     try:
         ydl_opts = YTDL_BASE_OPTIONS.copy()
@@ -103,7 +115,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             })
         else:
             ydl_opts.update({
-                'format': 'best[ext=mp4]/best',
+                'format': 'best/best',
                 'outtmpl': f'{out_file}.%(ext)s',
             })
             
@@ -121,12 +133,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await context.bot.send_video(chat_id=query.message.chat_id, video=file_to_send)
 
-        if os.path.exists(filename):
-            os.remove(filename)
         await query.delete_message()
 
     except Exception as e:
-        await query.edit_message_text(f"❌ حدث خطأ أثناء التحميل: {str(e)}")
+        await query.edit_message_text(f"❌ حدث خطأ أثناء التحميل أو الرفع.")
+    
+    finally:
+        if filename and os.path.exists(filename):
+            try:
+                os.remove(filename)
+            except:
+                pass
 
 def main():
     threading.Thread(target=run_flask, daemon=True).start()
@@ -136,7 +153,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
     app.add_handler(CallbackQueryHandler(button_callback))
     
-    app.run_polling()
+    print("Bot is starting...")
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
     main()
