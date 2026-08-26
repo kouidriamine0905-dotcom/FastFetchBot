@@ -6,19 +6,26 @@ from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, 
     filters, ContextTypes
 )
+from yt_dlp import YoutubeDL
 
 TOKEN = "8729731201:AAEVEHKVGxKUs1psp2xPCeDlF8iEQdaJHa0"
 RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://fastfetchbot.onrender.com")
 
 web_app = Flask(__name__)
-
-# تهيئة تطبيق تيليجرام
 telegram_app = ApplicationBuilder().token(TOKEN).build()
+
+YTDL_OPTIONS = {
+    'quiet': True,
+    'no_warnings': True,
+    'socket_timeout': 30,
+    'geo_bypass': True,
+    'format': 'best/best',
+}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "✨ **أهلاً بك في FastFetch Bot!** 🚀\n\n"
-        "📥 أرسل لي أي رابط (يوتيوب، تيكتوك، إنستغرام، فيسبوك) وسأجلب لك رابط التحميل فوراً!"
+        "📥 أرسل لي أي رابط (يوتيوب، تيكتوك، إنستغرام) وسأقوم باستخراج وتجهيزه لك فوراً!"
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -34,50 +41,28 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ يرجى إرسال رابط صحيح.")
         return
 
-    msg = await update.message.reply_text("🔍 جاري معالجة الرابط عبر السيرفر السريع...")
+    msg = await update.message.reply_text("🔍 جاري فحص الرابط واستخراج المقطع...")
 
     try:
-        # استخدام خدمة بديلة ومستقرة تماماً لجلب روابط الميديا
-        api_url = f"https://api.cobalt.tools/api/json"
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "url": url,
-            "vQuality": "720"
-        }
-
-        response = requests.post(api_url, json=payload, headers=headers, timeout=20)
-        res_data = response.json()
-
-        status = res_data.get("status")
-
-        if status == "stream" or status == "redirect":
-            download_url = res_data.get("url")
-            keyboard = [[InlineKeyboardButton("📥 تحميل الملف مباشرة", url=download_url)]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-
-            await msg.edit_text("✅ **تم تجهيز رابط التحميل بنجاح!**\nاضغط على الزر أدناه للتحميل:", reply_markup=reply_markup, parse_mode='Markdown')
+        with YoutubeDL(YTDL_OPTIONS) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if 'entries' in info:
+                info = info['entries'][0]
             
-        elif status == "picker":
-            # في حال وجود أكثر من خيار جودة أو صور متعددة
-            picker_items = res_data.get("picker", [])
-            if picker_items:
-                download_url = picker_items[0].get("url")
-                keyboard = [[InlineKeyboardButton("📥 تحميل الملف", url=download_url)]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await msg.edit_text("✅ **تم تجهيز المقطع!** اضغط أدناه للتحميل:", reply_markup=reply_markup, parse_mode='Markdown')
-            else:
-                await msg.edit_text("❌ عذراً، لم نتمكن من استخراج رابط التحميل.")
+            title = info.get('title', 'مقطع فيديو')
+            direct_url = info.get('url')
+
+        if direct_url:
+            keyboard = [[InlineKeyboardButton("📥 تحميل الفيديو مباشرة", url=direct_url)]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await msg.edit_text(f"📌 **{title[:50]}...**\n\n✅ تم استخراج الرابط بنجاح:", reply_markup=reply_markup, parse_mode='Markdown')
         else:
-            error_text = res_data.get("text", "تأكد أن الرابط عام وليس خاصاً.")
-            await msg.edit_text(f"❌ تعذر التحميل: {error_text}")
+            await msg.edit_text("❌ تعذر العثور على رابط التحميل المباشر.")
 
     except Exception as e:
-        await msg.edit_text(f"❌ حدث خطأ في الاتصال بالخدمة. حاول مجدداً لاحقاً.")
+        await msg.edit_text(f"❌ عذراً، هذا الرابط محمي أو غير مدعوم حالياً.")
 
-# تسجيل الأوامر والرسائل
+# تسجيل الهاندلرز
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(MessageHandler(filters.TEXT, handle_link))
 
@@ -99,7 +84,7 @@ def webhook():
         import asyncio
         asyncio.run(process())
     except Exception as e:
-        print(f"Error processing update: {e}")
+        print(f"Error: {e}")
         
     return 'OK', 200
 
