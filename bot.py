@@ -1,7 +1,7 @@
 import os
 import requests
 from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, 
     filters, ContextTypes
@@ -14,23 +14,10 @@ RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://fastfetchbo
 web_app = Flask(__name__)
 telegram_app = ApplicationBuilder().token(TOKEN).build()
 
-# إعدادات خاصة لـ yt-dlp تتخطى الحماية وتدعم تيكتوك، إنستغرام، وفيسبوك
-YTDL_OPTIONS = {
-    'quiet': True,
-    'no_warnings': True,
-    'socket_timeout': 30,
-    'geo_bypass': True,
-    'format': 'best/best',
-}
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
-        "✨ **أهلاً بك في بوت التحميل السريع!** 🚀\n\n"
-        "📥 أرسل لي رابطاً من:\n"
-        "• 🎥 **TikTok**\n"
-        "• 📸 **Instagram**\n"
-        "• 📘 **Facebook**\n\n"
-        "وسأقوم بتجهيز رابط التحميل لك فوراً!"
+        "✨ **أهلاً بك في بوت التحميل المباشر!** 🚀\n\n"
+        "📥 أرسل لي رابطاً من **TikTok** أو **Instagram** أو **Facebook** وسأقوم بتحميل الفيديو وإرساله لك هنا فوراً!"
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
@@ -46,31 +33,54 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ يرجى إرسال رابط صحيح يبدأ بـ http.")
         return
 
-    # منع يوتيوب بشكل نهائي وتنبيه المستخدم
+    # منع يوتيوب نهائياً بناءً على رغبتك
     if "youtube.com" in url or "youtu.be" in url:
-        await update.message.reply_text("❌ عذراً، خدمة يوتيوب متوقفة حالياً. البوت يدعم TikTok, Instagram, و Facebook فقط.")
+        await update.message.reply_text("❌ عذراً، يوتيوب متوقف. البوت يدعم TikTok, Instagram, و Facebook فقط.")
         return
 
-    msg = await update.message.reply_text("🔍 جاري معالجة الرابط واستخراج الفيديو...")
+    msg = await update.message.reply_text("⏳ جاري تحميل الفيديو، طفلاً صغيراً...")
 
+    file_path = None
     try:
-        with YoutubeDL(YTDL_OPTIONS) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if 'entries' in info:
-                info = info['entries'][0]
-            
-            title = info.get('title', 'مقطع فيديو')
-            direct_url = info.get('url')
+        # إعدادات التحميل المباشر عبر yt-dlp
+        output_template = "video_%s.mp4" % update.message.chat_id
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': output_template,
+            'quiet': True,
+            'no_warnings': True,
+            'max_filesize': 50 * 1024 * 1024, # حد أقصى 50 ميجابايت لتناسب حدود تيليجرام المجانية
+        }
 
-        if direct_url:
-            keyboard = [[InlineKeyboardButton("📥 تحميل الفيديو مباشرة", url=direct_url)]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await msg.edit_text(f"📌 **{title[:40]}...**\n\n✅ تم تجهيز الرابط بنجاح:", reply_markup=reply_markup, parse_mode='Markdown')
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info)
+
+        # التأكد من أن الملف تم تحميله بنجاح
+        if file_path and os.path.exists(file_path):
+            await msg.edit_text("📤 جاري رفع الفيديو وإرساله لك...")
+            
+            with open(file_path, 'rb') as video_file:
+                await update.message.reply_video(
+                    video=video_file,
+                    caption="✅ تم التحميل بواسطة بوتك الخاص!"
+                )
+            
+            # حذف الرسالة المؤقتة
+            await msg.delete()
         else:
-            await msg.edit_text("❌ تعذر العثور على رابط التحميل المباشر لهذا الرابط.")
+            await msg.edit_text("❌ تعذر تحميل هذا الفيديو، ربما يكون الحساب خاصاً أو الرابط غير مدعوم.")
 
     except Exception as e:
-        await msg.edit_text("❌ عذراً، هذا الرابط خاص أو غير مدعوم حالياً.")
+        await msg.edit_text("❌ حدث خطأ أثناء تحميل الفيديو. تأكد أن الرابط عام وليس خاصاً.")
+    
+    finally:
+        # تنظيف وحذف الملف من السيرفر لتوفير المساحة
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except:
+                pass
 
 # تسجيل الهاندلرز
 telegram_app.add_handler(CommandHandler("start", start))
@@ -78,7 +88,7 @@ telegram_app.add_handler(MessageHandler(filters.TEXT, handle_link))
 
 @web_app.route('/')
 def home():
-    return "FastFetch Webhook Bot (TikTok, Insta, FB) is running 24/7!"
+    return "FastFetch Direct Download Bot is running 24/7!"
 
 @web_app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
